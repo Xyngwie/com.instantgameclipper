@@ -17,6 +17,7 @@ import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.instantgameclipper.capture.CaptureRuntime
 import com.instantgameclipper.exporter.ClipExporter
+import com.instantgameclipper.overlay.ClipOverlay
 import java.util.concurrent.Executors
 
 class ClipperForegroundService : Service() {
@@ -25,10 +26,12 @@ class ClipperForegroundService : Service() {
     private var projectionResultCode: Int = Activity.RESULT_CANCELED
     private var projectionResultData: Intent? = null
     private val exportExecutor = Executors.newSingleThreadExecutor()
+    private var overlay: ClipOverlay? = null
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
             Log.i(TAG, "MediaProjection stopped")
+            overlay?.hide()
             CaptureRuntime.session.stop()
             releaseProjection()
             stopSelf()
@@ -36,6 +39,11 @@ class ClipperForegroundService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        overlay = ClipOverlay(applicationContext)
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -50,6 +58,8 @@ class ClipperForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        overlay?.hide()
+        overlay = null
         exportExecutor.shutdownNow()
         CaptureRuntime.session.stop()
         CaptureRuntime.ringBuffer.clear()
@@ -82,6 +92,7 @@ class ClipperForegroundService : Service() {
                 return
             }
 
+        overlay?.show()
         ServiceState.setRunning(true)
     }
 
