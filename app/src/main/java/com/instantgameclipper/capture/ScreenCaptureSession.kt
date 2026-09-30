@@ -16,6 +16,7 @@ class ScreenCaptureSession(
     private val encoder = VideoEncoder(ringBuffer) { format ->
         CaptureRuntime.videoFormat = format
     }
+    private val audioCapture = InternalAudioCapture(ringBuffer)
     private var virtualDisplay: VirtualDisplay? = null
 
     fun start(mediaProjection: MediaProjection) {
@@ -36,10 +37,13 @@ class ScreenCaptureSession(
             null,
             null,
         )
+        runCatching { audioCapture.start(mediaProjection) }
+            .onFailure { Log.e(TAG, "audio start failed", it) }
         Log.i(TAG, "VirtualDisplay started ${width}x$height dpi=$dpi")
     }
 
     fun stop() {
+        audioCapture.stop()
         runCatching { virtualDisplay?.release() }
         virtualDisplay = null
         encoder.stop()
@@ -65,5 +69,6 @@ class ScreenCaptureSession(
 object CaptureRuntime {
     val ringBuffer = MemoryRingBuffer()
     @Volatile var videoFormat: MediaFormat? = null
+    @Volatile var audioFormat: MediaFormat? = null
     val session = ScreenCaptureSession(ringBuffer)
 }
