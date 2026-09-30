@@ -1,9 +1,9 @@
 package com.instantgameclipper.capture
 
-import android.content.Context
 import android.content.res.Resources
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
+import android.media.MediaFormat
 import android.media.projection.MediaProjection
 import android.util.Log
 import com.instantgameclipper.codec.MemoryRingBuffer
@@ -13,13 +13,13 @@ import kotlin.math.min
 class ScreenCaptureSession(
     private val ringBuffer: MemoryRingBuffer = CaptureRuntime.ringBuffer,
 ) {
-    private val encoder = VideoEncoder(ringBuffer)
+    private val encoder = VideoEncoder(ringBuffer) { format ->
+        CaptureRuntime.videoFormat = format
+    }
     private var virtualDisplay: VirtualDisplay? = null
-    private var projection: MediaProjection? = null
 
-    fun start(context: Context, mediaProjection: MediaProjection) {
+    fun start(mediaProjection: MediaProjection) {
         stop()
-        projection = mediaProjection
 
         val metrics = Resources.getSystem().displayMetrics
         val (width, height) = capTo1080(metrics.widthPixels, metrics.heightPixels)
@@ -37,14 +37,12 @@ class ScreenCaptureSession(
             null,
         )
         Log.i(TAG, "VirtualDisplay started ${width}x$height dpi=$dpi")
-        context.applicationContext
     }
 
     fun stop() {
         runCatching { virtualDisplay?.release() }
         virtualDisplay = null
         encoder.stop()
-        projection = null
     }
 
     private fun capTo1080(rawW: Int, rawH: Int): Pair<Int, Int> {
@@ -66,5 +64,6 @@ class ScreenCaptureSession(
 
 object CaptureRuntime {
     val ringBuffer = MemoryRingBuffer()
+    @Volatile var videoFormat: MediaFormat? = null
     val session = ScreenCaptureSession(ringBuffer)
 }
