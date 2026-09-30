@@ -16,12 +16,15 @@ import android.util.Log
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.instantgameclipper.capture.CaptureRuntime
+import com.instantgameclipper.exporter.ClipExporter
+import java.util.concurrent.Executors
 
 class ClipperForegroundService : Service() {
 
     private var mediaProjection: MediaProjection? = null
     private var projectionResultCode: Int = Activity.RESULT_CANCELED
     private var projectionResultData: Intent? = null
+    private val exportExecutor = Executors.newSingleThreadExecutor()
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
@@ -37,6 +40,7 @@ class ClipperForegroundService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> handleStart(intent)
+            ACTION_EXPORT -> handleExport()
             ACTION_STOP -> stopSelf()
             else -> {
                 if (!promoteToForeground()) stopSelf()
@@ -46,8 +50,10 @@ class ClipperForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        exportExecutor.shutdownNow()
         CaptureRuntime.session.stop()
         CaptureRuntime.ringBuffer.clear()
+        CaptureRuntime.videoFormat = null
         releaseProjection()
         ServiceState.setRunning(false)
         super.onDestroy()
@@ -69,7 +75,7 @@ class ClipperForegroundService : Service() {
             return
         }
 
-        runCatching { CaptureRuntime.session.start(this, projection) }
+        runCatching { CaptureRuntime.session.start(projection) }
             .onFailure { error ->
                 Log.e(TAG, "capture start failed", error)
                 stopSelf()
@@ -77,6 +83,17 @@ class ClipperForegroundService : Service() {
             }
 
         ServiceState.setRunning(true)
+    }
+
+    private fun handleExport() {
+        exportExecutor.execute {
+            val exporter = ClipExporter(applicationContext)
+            val result = exporter.exportLast30Seconds()
+            ClipExporter.log(result)
+            result.onSuccess { uri ->
+                runCatching { exporter.share(uri) }
+            }
+        }
     }
 
     private fun promoteToForeground(): Boolean {
@@ -120,6 +137,7 @@ class ClipperForegroundService : Service() {
 
         const val ACTION_START = "com.instantgameclipper.action.START"
         const val ACTION_STOP = "com.instantgameclipper.action.STOP"
+        const val ACTION_EXPORT = "com.instantgameclipper.action.EXPORT"
         const val EXTRA_RESULT_CODE = "extra_result_code"
         const val EXTRA_RESULT_DATA = "extra_result_data"
 
@@ -136,6 +154,14 @@ class ClipperForegroundService : Service() {
             context.startService(
                 Intent(context, ClipperForegroundService::class.java).apply {
                     action = ACTION_STOP
+                },
+            )
+        }
+
+        fun export(context: Context) {
+            context.startService(
+                Intent(context, ClipperForegroundService::class.java).apply {
+                    action = ACTION_EXPORT
                 },
             )
         }
