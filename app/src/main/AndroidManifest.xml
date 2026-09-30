@@ -10,7 +10,9 @@
     <application
         android:name=".InstantGameClipperApp"
         android:allowBackup="false"
-        android:label="InstantGameClipper"
+        android:icon="@mipmap/grok_1790766126808"
+        android:roundIcon="@mipmap/grok_1790766126808"
+        android:label="@string/app_name"
         android:supportsRtl="true">
 
         <activity
