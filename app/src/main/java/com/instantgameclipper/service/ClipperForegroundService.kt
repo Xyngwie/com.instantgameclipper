@@ -15,6 +15,7 @@ import android.os.Parcelable
 import android.util.Log
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import com.instantgameclipper.capture.CaptureRuntime
 
 class ClipperForegroundService : Service() {
 
@@ -25,6 +26,7 @@ class ClipperForegroundService : Service() {
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
             Log.i(TAG, "MediaProjection stopped")
+            CaptureRuntime.session.stop()
             releaseProjection()
             stopSelf()
         }
@@ -44,6 +46,8 @@ class ClipperForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        CaptureRuntime.session.stop()
+        CaptureRuntime.ringBuffer.clear()
         releaseProjection()
         ServiceState.setRunning(false)
         super.onDestroy()
@@ -58,11 +62,20 @@ class ClipperForegroundService : Service() {
         projectionResultCode = intent.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED)
         projectionResultData = intent.parcelableExtraCompat(EXTRA_RESULT_DATA)
 
-        Log.i(
-            TAG,
-            "FGS running. projectionGranted=" +
-                "${projectionResultData != null && projectionResultCode == Activity.RESULT_OK}",
-        )
+        val projection = acquireMediaProjection()
+        if (projection == null) {
+            Log.e(TAG, "MediaProjection token missing")
+            stopSelf()
+            return
+        }
+
+        runCatching { CaptureRuntime.session.start(this, projection) }
+            .onFailure { error ->
+                Log.e(TAG, "capture start failed", error)
+                stopSelf()
+                return
+            }
+
         ServiceState.setRunning(true)
     }
 
@@ -82,7 +95,7 @@ class ClipperForegroundService : Service() {
         }
     }
 
-    internal fun acquireMediaProjection(): MediaProjection? {
+    private fun acquireMediaProjection(): MediaProjection? {
         val data = projectionResultData ?: return null
         if (projectionResultCode != Activity.RESULT_OK) return null
         mediaProjection?.let { return it }
