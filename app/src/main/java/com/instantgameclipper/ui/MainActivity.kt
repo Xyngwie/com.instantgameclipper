@@ -3,6 +3,7 @@ package com.instantgameclipper.ui
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
@@ -33,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.instantgameclipper.service.ClipperForegroundService
 import com.instantgameclipper.service.ServiceState
 
@@ -42,7 +44,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    Phase1Screen()
+                    SetupScreen()
                 }
             }
         }
@@ -50,7 +52,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun Phase1Screen() {
+private fun SetupScreen() {
     val context = LocalContext.current
     val running by ServiceState.isRunning.collectAsState()
 
@@ -60,12 +62,24 @@ private fun Phase1Screen() {
     var overlayGranted by remember {
         mutableStateOf(Settings.canDrawOverlays(context))
     }
+    var recordGranted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED,
+        )
+    }
     var projectionGranted by remember { mutableStateOf(false) }
 
     val notificationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) {
         notificationGranted = NotificationManagerCompat.from(context).areNotificationsEnabled()
+    }
+
+    val recordLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        recordGranted = granted
     }
 
     val overlayLauncher = rememberLauncherForActivityResult(
@@ -89,6 +103,10 @@ private fun Phase1Screen() {
     fun refresh() {
         notificationGranted = NotificationManagerCompat.from(context).areNotificationsEnabled()
         overlayGranted = Settings.canDrawOverlays(context)
+        recordGranted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECORD_AUDIO,
+        ) == PackageManager.PERMISSION_GRANTED
     }
 
     Column(
@@ -97,14 +115,10 @@ private fun Phase1Screen() {
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text("Phase 1-3", style = MaterialTheme.typography.headlineSmall)
-        Text("権限 → サービス起動 → 直近30秒をMP4保存")
+        Text("InstantGameClipper", style = MaterialTheme.typography.headlineSmall)
+        Text("権限を揃えてサービスを起動。CLIPボタンで直近30秒を保存")
 
-        PermissionRow(
-            title = "通知 (POST_NOTIFICATIONS)",
-            granted = notificationGranted,
-            buttonLabel = "許可する",
-        ) {
+        PermissionRow("通知", notificationGranted, "許可する") {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             } else {
@@ -112,32 +126,31 @@ private fun Phase1Screen() {
             }
         }
 
-        PermissionRow(
-            title = "オーバーレイ (SYSTEM_ALERT_WINDOW)",
-            granted = overlayGranted,
-            buttonLabel = "設定を開く",
-        ) {
-            val intent = Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:${context.packageName}"),
+        PermissionRow("オーバーレイ", overlayGranted, "設定を開く") {
+            overlayLauncher.launch(
+                Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:${context.packageName}"),
+                ),
             )
-            overlayLauncher.launch(intent)
         }
 
-        PermissionRow(
-            title = "画面収録 (MediaProjection)",
-            granted = projectionGranted || running,
-            buttonLabel = "許可する",
-        ) {
+        PermissionRow("内部音声 (RECORD_AUDIO)", recordGranted, "許可する") {
+            recordLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+
+        PermissionRow("画面収録", projectionGranted || running, "許可する") {
             val manager = context.getSystemService(MediaProjectionManager::class.java)
             projectionLauncher.launch(manager.createScreenCaptureIntent())
         }
 
         val ready = notificationGranted && overlayGranted
         Text(
-            if (running) "サービス: 稼働中"
-            else if (ready) "サービス: 停止中（画面収録の許可で起動）"
-            else "サービス: 先に通知とオーバーレイを許可",
+            when {
+                running -> "サービス: 稼働中"
+                ready -> "サービス: 停止中"
+                else -> "サービス: 先に通知とオーバーレイを許可"
+            },
         )
 
         Row(
@@ -152,27 +165,20 @@ private fun Phase1Screen() {
                     projectionLauncher.launch(manager.createScreenCaptureIntent())
                 },
                 enabled = !running,
-            ) {
-                Text("開始")
-            }
+            ) { Text("開始") }
+
             OutlinedButton(
                 onClick = { ClipperForegroundService.stop(context) },
                 enabled = running,
-            ) {
-                Text("停止")
-            }
+            ) { Text("停止") }
         }
 
         Button(
             onClick = { ClipperForegroundService.export(context) },
             enabled = running,
-        ) {
-            Text("直近30秒を保存")
-        }
+        ) { Text("直近30秒を保存") }
 
-        OutlinedButton(onClick = { refresh() }) {
-            Text("状態を再読み込み")
-        }
+        OutlinedButton(onClick = { refresh() }) { Text("状態を再読み込み") }
     }
 }
 
