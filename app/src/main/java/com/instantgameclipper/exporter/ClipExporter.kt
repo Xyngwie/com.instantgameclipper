@@ -21,11 +21,17 @@ class ClipExporter(
 ) {
     fun exportLast30Seconds(): Result<Uri> = runCatching {
         val frames = ringBuffer.snapshotTrailing(MemoryRingBuffer.DEFAULT_CLIP_US)
-            .filter { it.kind == EncodedFrame.Kind.VIDEO }
-        val samples = frames.filter { !it.isConfig && it.data.isNotEmpty() }
-        require(samples.isNotEmpty()) { "ring buffer is empty" }
+        val videoSamples = frames.filter {
+            it.kind == EncodedFrame.Kind.VIDEO && !it.isConfig && it.data.isNotEmpty()
+        }
+        val audioSamples = frames.filter {
+            it.kind == EncodedFrame.Kind.AUDIO && !it.isConfig && it.data.isNotEmpty()
+        }
+        require(videoSamples.isNotEmpty()) { "ring buffer has no video" }
 
-        val format = buildVideoFormat(frames)
+        val videoFormat = buildVideoFormat(frames)
+        val audioFormat = CaptureRuntime.audioFormat
+
         val name = "IGC_${System.currentTimeMillis()}.mp4"
         val values = ContentValues().apply {
             put(MediaStore.Video.Media.DISPLAY_NAME, name)
@@ -44,18 +50,16 @@ class ClipExporter(
         try {
             resolver.openFileDescriptor(uri, "w")?.use { pfd ->
                 val muxer = MediaMuxer(pfd.fileDescriptor, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-                val track = muxer.addTrack(format)
+                val videoTrack = muxer.addTrack(videoFormat)
+                val audioTrack = if (audioFormat != null && audioSamples.isNotEmpty()) {
+                    muxer.addTrack(MediaFormat(audioFormat))
+                } else {
+                    -1
+                }
                 muxer.start()
 
-                val info = MediaCodec.BufferInfo()
-                val basePts = samples.first().presentationTimeUs
-                samples.forEach { frame ->
-                    info.offset = 0
-                    info.size = frame.data.size
-                    info.presentationTimeUs = (frame.presentationTimeUs - basePts).coerceAtLeast(0L)
-                    info.flags = frame.flags
-                    muxer.writeSampleData(track, ByteBuffer.wrap(frame.data), info)
-                }
+                writeTrack(muxer, videoTrack, videoSamples)
+                if (audioTrack >= 0) writeTrack(muxer, audioTrack, audioSamples)
 
                 muxer.stop()
                 muxer.release()
@@ -81,11 +85,27 @@ class ClipExporter(
         context.startActivity(Intent.createChooser(intent, "クリップを共有"))
     }
 
+    private fun writeTrack(
+        muxer: MediaMuxer,
+        track: Int,
+        samples: List<EncodedFrame>,
+    ) {
+        val info = MediaCodec.BufferInfo()
+        val basePts = samples.first().presentationTimeUs
+        samples.forEach { frame ->
+            info.offset = 0
+            info.size = frame.data.size
+            info.presentationTimeUs = (frame.presentationTimeUs - basePts).coerceAtLeast(0L)
+            info.flags = frame.flags
+            muxer.writeSampleData(track, ByteBuffer.wrap(frame.data), info)
+        }
+    }
+
     private fun buildVideoFormat(frames: List<EncodedFrame>): MediaFormat {
         val stored = CaptureRuntime.videoFormat
         if (stored != null) return MediaFormat(stored)
 
-        val config = frames.firstOrNull { it.isConfig }
+        val config = frames.firstOrNull { it.kind == EncodedFrame.Kind.VIDEO && it.isConfig }
             ?: error("missing codec config (SPS/PPS)")
         return MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1280, 720).apply {
             setByteBuffer("csd-0", ByteBuffer.wrap(config.data))
