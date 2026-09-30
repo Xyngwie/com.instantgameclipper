@@ -8,12 +8,9 @@ import android.os.HandlerThread
 import android.util.Log
 import android.view.Surface
 
-/**
- * Hardware AVC encoder. Output NALs are copied into [MemoryRingBuffer] and
- * the codec buffer is released immediately. Nothing is written to disk.
- */
 class VideoEncoder(
     private val ringBuffer: MemoryRingBuffer,
+    private val onOutputFormat: (MediaFormat) -> Unit = {},
 ) {
     private var codec: MediaCodec? = null
     private var inputSurface: Surface? = null
@@ -66,6 +63,7 @@ class VideoEncoder(
 
             override fun onOutputFormatChanged(codec: MediaCodec, format: MediaFormat) {
                 Log.i(TAG, "output format $format")
+                onOutputFormat(MediaFormat(format))
             }
         }, Handler(thread.looper))
 
@@ -82,10 +80,8 @@ class VideoEncoder(
         runCatching { codec?.stop() }
         runCatching { codec?.release() }
         codec = null
-
         runCatching { inputSurface?.release() }
         inputSurface = null
-
         callbackThread?.quitSafely()
         callbackThread = null
     }
