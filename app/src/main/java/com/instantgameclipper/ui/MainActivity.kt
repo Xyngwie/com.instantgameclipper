@@ -33,7 +33,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
 import com.instantgameclipper.service.ClipperForegroundService
 import com.instantgameclipper.service.ServiceState
 
@@ -98,8 +97,8 @@ private fun Phase1Screen() {
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text("Phase 1", style = MaterialTheme.typography.headlineSmall)
-        Text("権限を揃えてから Foreground Service を起動する")
+        Text("Phase 1-3", style = MaterialTheme.typography.headlineSmall)
+        Text("権限 → サービス起動 → 直近30秒をMP4保存")
 
         PermissionRow(
             title = "通知 (POST_NOTIFICATIONS)",
@@ -162,6 +161,13 @@ private fun Phase1Screen() {
             ) {
                 Text("停止")
             }
+        }
+
+        Button(
+            onClick = { ClipperForegroundService.export(context) },
+            enabled = running,
+        ) {
+            Text("直近30秒を保存")
         }
 
         OutlinedButton(onClick = { refresh() }) {
