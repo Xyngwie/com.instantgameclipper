@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">InstantGameClipper</string>
+    <string name="notification_channel_name">クリップ状態</string>
+    <string name="notification_channel_desc">バックグラウンドでリングバッファを維持しているときの通知</string>
+    <string name="notification_title">InstantGameClipper</string>
+    <string name="notification_text_idle">待機中（キャプチャは Phase 2）</string>
+    <string name="notification_stop">停止</string>
+</resources>
