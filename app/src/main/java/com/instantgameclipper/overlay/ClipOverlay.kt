@@ -18,6 +18,7 @@ class ClipOverlay(private val context: Context) {
     private var button: Button? = null
     private var params: WindowManager.LayoutParams? = null
 
+    @SuppressLint("ClickableViewAccessibility")
     fun show() {
         if (button != null) return
         if (!Settings.canDrawOverlays(context)) return
@@ -48,7 +49,6 @@ class ClipOverlay(private val context: Context) {
             y = context.resources.displayMetrics.heightPixels / 3
         }
 
-        @SuppressLint("ClickableViewAccessibility")
         view.setOnTouchListener(object : View.OnTouchListener {
             private var startX = 0
             private var startY = 0
